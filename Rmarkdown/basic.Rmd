@@ -1,0 +1,729 @@
+---
+title: "Tutorial of CytoTree"
+author: "Yuting Dai"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    self_contained: true
+    thumbnails: true
+    lightbox: true
+    gallery: false
+    highlight: tango
+  pdf_document:
+    toc: yes
+  html_document:
+    df_print: paged
+    toc: yes
+package: CytoTree
+vignette: |
+  %\VignetteIndexEntry{Basic} 
+  \usepackage[utf8]{inputenc} 
+  %\VignetteEncoding{UTF-8} 
+  %\VignetteEngine{knitr::rmarkdown}
+---
+
+```{r echo = FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = FALSE, eval = TRUE,
+                      warning = FALSE, message = TRUE)
+```
+
+## Introduction
+
+Multidimensional flow and mass cytometric assays are widely used for cellular subpopulation identification, tissue microenvironment composition determination, clinical immunophenotyping and differential lineage reconstruction[1]. Modern fluorescence-based flow cytometers typically can detect up to 20 features at the single-cell level in one routine experiment, whereas mass cytometers increase the capacity to nearly 50 features[2]. Because of the traditional manual gating strategies used for flow cytometry data, effective analysis methods for multidimensional cytometric data still face challenges in terms of trajectory inference, pseudotime estimation, visualization and workflow standardization.
+
+Here we present CytoTree, a trajectory inference, pseudotime estimation and visualization toolkit for flow and mass cytometry data. The CytoTree package is built in R and offers a complete up-to-date analysis workflow for flow and mass cytometry data that includes subpopulation classification, dimensionality reduction, trajectory construction, differentially expressed marker calculation, pseudotime estimation, intermediate state identification and visualization. The CytoTree runs on several platforms, such as UNIX, Windows and MacOS, and provides an up-to-date, feature-rich and readily scalable workflow. 
+
+The CytoTree package was developed to provide a complete standardized analysis and visualization workflow for FCS data. In CytoTree workflow, an R S4 object is built to integrated all computational modules into one single channel, which is named as an CYT object. This design not only packages most statistical and computational approaches into a single comprehensive analysis workflow but also provides a convenient way for users to adjust parameters and obtain results. The computational modules of CytoTree can be mainly divided into four main categories: preprocessing, trajectory, analysis and visualization.
+
+## Installation
+
+Installation via GitHub
+
+This requires the `devtools` package to be installed first.
+
+``` {r eval = FALSE}
+
+# If not already installed
+install.packages("devtools") 
+devtools::install_github("JhuangLab/CytoTree")
+
+library(CytoTree)
+
+```
+
+## Quick guide
+
+This is the quick guide of CytoTree workflow. All datasets and source code can be downloaded via `git clone https://github.com/JhuangLab/CytoTree-dataset.git`.
+
+
+``` {r, eval = FALSE}
+
+# Loading packages
+suppressMessages({
+library(ggplot2)
+library(CytoTree)
+library(flowCore)
+library(stringr)
+})
+
+#######################################################
+##### Preprocessing
+#######################################################
+# Read fcs files
+fcs.path <- system.file("extdata", package = "CytoTree")
+fcs.files <- list.files(fcs.path, pattern = '.FCS$', full = TRUE)
+
+fcs.data <- runExprsMerge(fcs.files, comp = FALSE, transformMethod = "none")
+
+# Refine colnames of fcs data
+recol <- c(`FITC-A<CD43>` = "CD43", `APC-A<CD34>` = "CD34", 
+           `BV421-A<CD90>` = "CD90", `BV510-A<CD45RA>` = "CD45RA", 
+           `BV605-A<CD31>` = "CD31", `BV650-A<CD49f>` = "CD49f",
+           `BV 735-A<CD73>` = "CD73", `BV786-A<CD45>` = "CD45", 
+           `PE-A<FLK1>` = "FLK1", `PE-Cy7-A<CD38>` = "CD38")
+colnames(fcs.data)[match(names(recol), colnames(fcs.data))] = recol
+fcs.data <- fcs.data[, recol]
+
+day.list <- c("D0", "D2", "D4", "D6", "D8", "D10")
+meta.data <- data.frame(cell = rownames(fcs.data),
+                        stage = str_replace(rownames(fcs.data), regex(".FCS.+"), "") )
+meta.data$stage <- factor(as.character(meta.data$stage), levels = day.list)
+
+markers <- c("CD43","CD34","CD90","CD45RA","CD31","CD49f","CD73","CD45","FLK1","CD38")
+
+#######################################################
+####  Standard workflow of CytoTree
+#######################################################
+
+# Build the CYT object
+cyt <- createCYT(raw.data = fcs.data, markers = markers,
+                   meta.data = meta.data,
+                   normalization.method = "log",
+                   verbose = TRUE)
+
+# See information
+cyt
+
+cyt <- runCluster(cyt)
+cyt <- processingCluster(cyt)
+cyt <- runFastPCA(cyt)
+cyt <- runTSNE(cyt)
+cyt <- runDiffusionMap(cyt)
+cyt <- runUMAP(cyt)
+cyt <- buildTree(cyt, dim.type = "umap", dim.use = 1:2)
+cyt <- defRootCells(cyt, root.cells = "Root cells")
+cyt <- runPseudotime(cyt)
+cyt <- defLeafCells(cyt, leaf.cells = "Leaf cells")
+cyt <- runWalk(cyt)
+
+
+```
+
+
+## Preprocessing
+
+This is preprocessing step for flow cytometry data analysis. In CytoTree workflow, data import, compensation, quality control, filtration, normalization and merge cells from different samples can be implemented in the preprocessing module. In this tutorial, we provided two methods to perform compensation and filtration by using `flowCore` and `CytoTree`.
+
+We compared the visualization step and gating control between `flowJO` and `CytoTree` using the rectangular gate. And there were no differences.
+
+<img src="Fig/Compare.png" height=1000 width=1000/>
+
+
+### Preprocessing using flowCore
+
+
+``` {r eval = TRUE, fig.width = 8, fig.height = 8}
+
+# Loading packages
+suppressMessages({
+  library(flowCore)
+  library(LSD)
+  library(CytoTree)
+})
+
+#########################
+# Read Flow Cytometry Data
+# It can be downloaded via `git clone https://github.com/JhuangLab/CytoTree-dataset.git` 
+# fcs.path musted be modified based on the download directory from GitHub
+fcs.path <- "FCS/preprocessing/"
+fcs.file <- paste0(fcs.path, "D10_raw.fcs")
+
+###########################################
+#   Get the expression matrix from FCS file
+###########################################
+
+fcs.data.raw <- flowCore::read.FCS(filename = fcs.file)
+head(fcs.data.raw)
+
+# Need compensation
+# If `flow.data@description$SPILL` is not empty, 
+# the matrix of flow cytometry need compensation
+fcs.data.raw@description$SPILL
+fcs.data <- flowCore::compensate(fcs.data.raw, spillover = fcs.data.raw@description$SPILL)
+head(fcs.data)
+
+###########################################
+#   Gating
+###########################################
+
+fcs.exp <- fcs.data@exprs
+
+# Plot by FSC-A and SSC-A
+heatscatter(fcs.exp[, "FSC-A"], 
+            fcs.exp[, "SSC-A"],
+            cexplot = 0.3, main = "Raw FCS data", 
+            xlab = "FSC-A", ylab = "SSC-A",
+            xlim = c(0, 250000), ylim = c(0, 250000))
+
+fcs.exp <- fcs.exp[which((fcs.exp[, "FSC-A"] > 70000) & (fcs.exp[, "FSC-A"] < 180000)), ]
+fcs.exp <- fcs.exp[which((fcs.exp[, "SSC-A"] > 30000) & (fcs.exp[, "SSC-A"] < 150000)), ]
+
+heatscatter(fcs.exp[, "FSC-A"], 
+            fcs.exp[, "SSC-A"],
+            cexplot = 0.3, main = "Filtered by FSC-A and SSC-A",
+            xlab = "FSC-A", ylab = "SSC-A",
+            xlim = c(0, 250000), ylim = c(0, 250000))
+
+
+# Plot by FSC-H and FSC-W
+heatscatter(fcs.exp[, "FSC-H"], 
+            fcs.exp[, "FSC-W"],
+            cexplot = 0.3, main = "Filtered by FSC-A and SSC-A",
+            xlab = "FSC-H", ylab = "FSC-W",
+            xlim = c(0, 250000), ylim = c(0, 250000))
+
+
+fcs.exp <- fcs.exp[which((fcs.exp[, "FSC-H"] > 40000) & (fcs.exp[, "FSC-H"] < 120000)), ]
+fcs.exp <- fcs.exp[which((fcs.exp[, "FSC-W"] > 60000) & (fcs.exp[, "FSC-W"] < 120000)), ]
+
+# Plot by FSC-H and FSC-W
+heatscatter(fcs.exp[, "FSC-H"], 
+            fcs.exp[, "FSC-W"],
+            cexplot = 0.3, main = "Filtered by FSC-H and FSC-W",
+            xlab = "FSC-H", ylab = "FSC-W",
+            xlim = c(0, 250000), ylim = c(0, 250000))
+
+# Plot by SSC-H and SSC-w
+heatscatter(fcs.exp[, "SSC-H"], 
+            fcs.exp[, "SSC-W"],
+            cexplot = 0.3, main = "Filtered by FSC-H and FSC-W",
+            xlab = "SSC-H", ylab = "SSC-W",
+            xlim = c(0, 250000), ylim = c(0, 250000))
+
+fcs.exp <- fcs.exp[which((fcs.exp[, "SSC-H"] > 20000) & (fcs.exp[, "SSC-H"] < 120000)), ]
+fcs.exp <- fcs.exp[which((fcs.exp[, "SSC-W"] > 60000) & (fcs.exp[, "SSC-W"] < 110000)), ]
+
+# Plot by SSC-H and SSC-w
+heatscatter(fcs.exp[, "SSC-H"], 
+            fcs.exp[, "SSC-W"],
+            cexplot = 0.3, main = "Filtered by SSC-H and SSC-W",
+            xlab = "SSC-H", ylab = "SSC-W",
+            xlim = c(0, 250000), ylim = c(0, 250000))
+
+# Plot by CD43 and CD31
+heatscatter(log10(abs(fcs.exp[, "FITC-A"])+1), 
+            log10(abs(fcs.exp[, "BV605-A"])+1),
+            cexplot = 0.3, main = "After gating", 
+            xlab = "CD43", ylab = "CD31",
+            xlim = c(0, 5), ylim = c(0, 5))
+
+# Plot by CD43 and CD31
+heatscatter(log10(abs(fcs.exp[, "APC-A"])+1), 
+            log10(abs(fcs.exp[, "BV650-A"])+1),
+            cexplot = 0.3, main = "After gating", 
+            xlab = "CD34", ylab = "CD49f",
+            xlim = c(0, 5), ylim = c(0, 5))
+
+# Plot by CD43 and CD31
+heatscatter(log10(abs(fcs.exp[, "PE-Cy7-A"])+1), 
+            log10(abs(fcs.exp[, "BV421-A"])+1),
+            cexplot = 0.3, main = "After gating", 
+            xlab = "CD38", ylab = "CD90",
+            xlim = c(0, 5), ylim = c(0, 5))
+
+# Output FCS file
+fcs.data@exprs <- fcs.exp
+flowCore::write.FCS(fcs.data, filename = "FCS/basic/D10.fcs")
+
+# Read FCS file and then start your analysis
+fcs.exp <- CytoTree::runExprsExtract("FCS/basic/D10.fcs", 
+                                    transformMethod = "none", comp = F, showDesc = F)
+
+# Show marker description in each panel
+recol <- c(`FITC-A` = "CD43", `APC-A` = "CD34", 
+           `BV421-A` = "CD90", `BV510-A` = "CD45RA", 
+           `BV605-A` = "CD31", `BV650-A` = "CD49f",
+           `BV 735-A` = "CD73", `BV786-A` = "CD45", 
+           `PE-A` = "FLK1", `PE-Cy7-A` = "CD38")
+
+colnames(fcs.exp)[match(names(recol), colnames(fcs.exp))] = recol
+fcs.exp <- fcs.exp[, recol]
+
+# build CYT object
+meta.data <- data.frame(cell = rownames(fcs.exp),
+                        stage = "D10" )
+cyt <- createCYT(raw.data = fcs.exp, markers = colnames(fcs.exp),
+                 meta.data = meta.data,
+                 normalization.method = "log")
+
+```
+
+### Preprocessing using CytoTree
+
+``` {r eval = TRUE, fig.width = 8, fig.height = 8}
+
+# Loading packages
+suppressMessages({
+  library(flowCore)
+  library(LSD)
+  library(CytoTree)
+})
+
+#########################
+# Read Flow Cytometry Data
+# It can be downloaded via `git clone https://github.com/JhuangLab/CytoTree-dataset.git` 
+# fcs.path musted be modified based on the download directory from GitHub
+fcs.path <- "FCS/preprocessing/"
+fcs.file <- paste0(fcs.path, "D10_raw.fcs")
+
+###########################################
+#   Get the expression matrix from FCS file
+###########################################
+
+# Need compensation
+# If the flow cytometry need compensation, set `comp = TRUE`
+cyt.data <- CytoTree::runExprsExtract(fcs.file, comp = TRUE, 
+                                      transformMethod = "none", showDesc = FALSE)
+head(cyt.data)
+
+heatscatter(cyt.data[, "FSC-A"], 
+            cyt.data[, "SSC-A"],
+            cexplot = 0.3, main = "Raw FCS data", 
+            xlab = "FSC-A", ylab = "SSC-A")
+
+###########################################
+#   Gating
+###########################################
+
+# Gating using the sample parameters
+cyt.data.gating <- gatingMatrix(cyt.data, 
+                                 lower.gate = c(`FSC-A` = 70000, `SSC-A` = 30000,
+                                                `FSC-H` = 40000, `FSC-W` = 60000,
+                                                `SSC-H` = 20000, `SSC-W` = 60000),
+                                 upper.gate = c(`FSC-A` = 180000, `SSC-A` = 150000,
+                                                `FSC-H` = 120000, `FSC-W` = 120000,
+                                                `SSC-H` = 120000, `SSC-W` = 110000))
+
+# Plot by CD43 and CD31
+heatscatter(log10(abs(cyt.data.gating[, "FITC-A"])+1), 
+            log10(abs(cyt.data.gating[, "BV605-A"])+1),
+            cexplot = 0.3, main = "After gating", 
+            xlab = "CD43", ylab = "CD31",
+            xlim = c(0, 5), ylim = c(0, 5))
+
+# Plot by CD43 and CD31
+heatscatter(log10(abs(cyt.data.gating[, "APC-A"])+1), 
+            log10(abs(cyt.data.gating[, "BV650-A"])+1),
+            cexplot = 0.3, main = "After gating", 
+            xlab = "CD34", ylab = "CD49f",
+            xlim = c(0, 5), ylim = c(0, 5))
+
+# Plot by CD43 and CD31
+heatscatter(log10(abs(cyt.data.gating[, "PE-Cy7-A"])+1), 
+            log10(abs(cyt.data.gating[, "BV421-A"])+1),
+            cexplot = 0.3, main = "After gating", 
+            xlab = "CD38", ylab = "CD90",
+            xlim = c(0, 5), ylim = c(0, 5))
+
+
+# Show marker description in each panel
+recol <- c(`FITC-A` = "CD43", `APC-A` = "CD34", 
+           `BV421-A` = "CD90", `BV510-A` = "CD45RA", 
+           `BV605-A` = "CD31", `BV650-A` = "CD49f",
+           `BV 735-A` = "CD73", `BV786-A` = "CD45", 
+           `PE-A` = "FLK1", `PE-Cy7-A` = "CD38")
+
+colnames(cyt.data.gating)[match(names(recol), colnames(cyt.data.gating))] = recol
+cyt.data.gating <- cyt.data.gating[, recol]
+
+# build CYT object and start your analysis
+meta.data <- data.frame(cell = rownames(cyt.data.gating),
+                        stage = "D10" )
+cyt <- createCYT(raw.data = cyt.data.gating, 
+                 markers = colnames(cyt.data.gating),
+                 meta.data = meta.data,
+                 normalization.method = "log")
+
+```
+
+## Trajectory
+
+The aim of the trajectory module is to construct trajectory that reveals subpopulation connections and cellular dynamic processes using the clean matrix input. First, all cells included in the CYT object are unsupervised classified into different clusters based on the expression levels of the markers. The CytoTree provides multiple methods to cluster cells by choosing different parameters, such as self-organizing maps (SOM)[3], k-means clustering (kmeans)[4], clara, phenoGraph[5] and hierarchical clustering (hclust). The default clustering method is SOM, for better performance in precision, coherence, and stability than other unsupervised tools[6]. After clustering, if the total cell size is too large, cluster-dependent downsampling is recommended to reduce the total cell number and avoid small cluster deletion. Dimensionality reduction for both cells and clusters is also implemented in the clustering procedure. Four popular dimensionality reduction method are integrated in CytoTree, namely PCA, tSNE, diffusion maps and UMAP. In the CytoTree workflow, we use a tree-shaped method to identify trajectory topologies, and a minimum spanning tree (MST) will be generated to construct the trajectory for all clusters.
+
+### Clustering
+
+``` {r eval = TRUE, fig.width = 8, fig.height = 7.5}
+
+# Loading packages
+suppressMessages({
+  library(CytoTree)
+  library(ggplot2)
+  library(ggthemes)
+})
+
+#########################
+# Read Flow Cytometry Data
+# It can be downloaded via `git clone https://github.com/JhuangLab/CytoTree-dataset.git` 
+# fcs.path musted be modified based on the download directory from GitHub
+fcs.path <- "FCS/basic/"
+fcs.file <- paste0(fcs.path, "FR-FCM-ZY9R-Bone_Marrow_cytof.fcs")
+
+###########################################
+#   Get the expression matrix from FCS file
+###########################################
+
+# If you want to see the description of each panel, Set showDesc = T.
+cyt.data <- CytoTree::runExprsExtract(fcs.file, comp = FALSE, 
+                                      transformMethod = "autoLgcl", showDesc = FALSE)
+head(cyt.data)
+dim(cyt.data)
+
+# build CYT object and start your analysis
+# If you don't want to see the running log information, set verbose FALSE
+# If there is only one case in your analysis workflow, you can just set stage = "D0"
+meta.data <- data.frame(cell = rownames(cyt.data),
+                        stage = "D0" )
+cyt <- createCYT(raw.data = cyt.data, 
+                 markers = colnames(cyt.data),
+                 meta.data = meta.data,
+                 normalization.method = "none")
+
+cyt
+
+# The CytoTree provides multiple methods to cluster cells by 
+# choosing different parameters, som, kmeans, clara, phenoGraph, 
+# and hclust. By default is som.
+set.seed(1)
+cyt <- runCluster(cyt, verbose = T)
+table(cyt@meta.data$cluster.id)
+
+# You can set xdim and ydim to specify the number of clusters
+# the cluster number is xdim * ydim
+set.seed(1)
+cyt <- runCluster(cyt, cluster.method = "som", xdim = 10, ydim = 10, verbose = T)
+table(cyt@meta.data$cluster.id)
+
+# Kmeans cluster, you can set k to specify the number of clusters
+set.seed(1)
+cyt <- runCluster(cyt, cluster.method = "kmeans", k = 100, verbose = T)
+table(cyt@meta.data$cluster.id)
+
+# Clara cluster, you can set k to specify the number of clusters
+set.seed(1)
+cyt <- runCluster(cyt, cluster.method = "clara", k = 100, verbose = T)
+table(cyt@meta.data$cluster.id)
+
+# Hclust cluster, you can set k to specify the number of clusters
+# Hclust runs only the cell number is less than 50,000. 
+# Or it will take lots of time
+if (dim(cyt.data)[1] < 10000) {
+  set.seed(1)
+  cyt <- runCluster(cyt, cluster.method = "hclust", k = 100, verbose = T)
+  table(cyt@meta.data$cluster.id)
+}
+
+
+# phenoGraph cluster. The number of clusters can not be modified
+# phenoGraph runs only the cell number is less than 10,000. 
+# Or it will take lots of time
+if (dim(cyt.data)[1] < 10000) {
+cyt <- runCluster(cyt, cluster.method = "phenograph", verbose = T)
+table(cyt@meta.data$cluster.id)
+}
+
+# By default is som, so we change the clustering method to som
+set.seed(8)
+cyt <- runCluster(cyt, cluster.method = "som", xdim = 10, ydim = 10, verbose = T)
+table(cyt@meta.data$cluster.id)
+
+# Preprocessing of Clusters
+# If the cell number is too large, for example, more than 50,000, 
+# cluster-based downsampling is recommended to reduce computation 
+# load and save computation time.
+# If the downsampling.size is 0.1, it means 10% cell 
+# will be kept in the further analysis. By default is 1.
+cyt <- processingCluster(cyt, perplexity = 5, downsampling.size = 0.1, 
+                          force.resample = TRUE, verbose = T)
+
+cyt
+
+###################################
+#### Visualization
+###################################
+
+plotCluster(cyt, item.use = c("PC_1", "PC_2"), category = "numeric",
+            size = 100, color.by = "CD4", show.cluser.id = TRUE) 
+
+plotCluster(cyt, item.use = c("tSNE_1", "tSNE_2"), category = "numeric",
+            size = 100, color.by = "CD4", show.cluser.id = TRUE) + 
+  scale_colour_gradientn(colors = c("#00599F", "#EEEEEE", "#FF3222"))
+
+plotCluster(cyt, item.use = c("DC_1", "DC_2"), category = "numeric",
+            size = 100, color.by = "CD4", show.cluser.id = TRUE) + 
+  scale_colour_gradientn(colors = c("#00599F", "#EEEEEE", "#FF3222"))
+
+plotCluster(cyt, item.use = c("UMAP_1", "UMAP_2"), category = "numeric",
+            size = 100, color.by = "CD4", show.cluser.id = FALSE) + 
+  scale_colour_gradientn(colors = c("#00599F", "#EEEEEE", "#FF3222"))
+
+
+```
+
+### Dimensionality Reduction
+
+``` {r eval = TRUE, fig.width = 8, fig.height = 8}
+# Four popular dimensionality reduction method are integrated 
+# in CytoTree, namely PCA, tSNE, diffusion maps and UMAP.
+
+# run Principal Component Analysis (PCA)
+cyt <- runFastPCA(cyt, verbose = T)
+
+# run t-Distributed Stochastic Neighbor Embedding (tSNE)
+set.seed(1)
+cyt <- runTSNE(cyt, dims = 2, verbose = T)
+
+# run Diffusion map
+cyt <- runDiffusionMap(cyt)
+
+# run Uniform Manifold Approximation and Projection (UMAP)
+cyt <- runUMAP(cyt)
+
+###################################
+#### Visualization
+###################################
+
+plot2D(cyt, item.use = c("PC_1", "PC_2"), color.by = "CD3", 
+       alpha = 1, main = "PCA", category = "numeric") + 
+  scale_colour_gradientn(colors = c("#00599F","#EEEEEE","#FF3222"))
+
+plot2D(cyt, item.use = c("tSNE_1", "tSNE_2"), color.by = "CD3", 
+       alpha = 1, main = "tSNE", category = "numeric") + 
+  scale_colour_gradientn(colors = c("#00599F","#EEEEEE","#FF3222"))
+
+plot2D(cyt, item.use = c("DC_1", "DC_2"), color.by = "CD3", 
+       alpha = 1, main = "Diffusion Maps", category = "numeric") + 
+  scale_colour_gradientn(colors = c("#00599F","#EEEEEE","#FF3222"))
+
+plot2D(cyt, item.use = c("UMAP_1", "UMAP_2"), color.by = "CD3", 
+       alpha = 1, main = "UMAP", category = "numeric") + 
+  scale_colour_gradientn(colors = c("#00599F","#EEEEEE","#FF3222"))
+
+plot2D(cyt, item.use = c("tSNE_1", "tSNE_2"), color.by = "cluster.id", 
+       alpha = 1, main = "tSNE", category = "categorical", show.cluser.id = T)
+
+plot3D(cyt, item.use = c("DC_1", "DC_2", "DC_3"), color.by = "CD3", 
+       main = "Diffusion Maps CD3", category = "numeric", size = 0.2, 
+       color.theme = c("#00599F","#EEEEEE","#FF3222"))
+
+plot3D(cyt, item.use = c("PC_1", "PC_2", "PC_3"), color.by = "CD3", 
+       main = "PCA CD3", category = "numeric", size = 0.2, 
+       color.theme = c("#00599F","#EEEEEE","#FF3222"))
+
+plot3D(cyt, item.use = c("PC_1", "PC_2", "CD4"), color.by = "CD8", 
+       main = "PCA relation with CD8", category = "numeric", size = 0.2, 
+       color.theme = c("#00599F","#EEEEEE","#FF3222"))
+
+plot3D(cyt, item.use = c("CD45", "CD4", "CD8"), color.by = "CD45", 
+       main = "marker expression by CD45", category = "numeric", size = 0.2, 
+       color.theme = c("#00599F","#EEEEEE","#FF3222"))
+
+```
+
+### Trajectory Reconstruction
+
+``` {r eval = TRUE, fig.width = 8, fig.height = 7.5}
+
+# CytoTree provides five method to build the tree-shaped trajectory: 
+# 1. Raw expression matrix
+# 2. PCA
+# 3. tSNE
+# 4. Diffusion maps
+# 5. UMAP
+
+# 1. Raw expression matrix
+cyt <- buildTree(cyt, dim.type = "raw")
+# Tree plot
+plotTree(cyt, color.by = "CD3", show.node.name = F, cex.size = 1) + 
+  scale_colour_gradientn(colors = c("#00599F", "#EEEEEE", "#FF3222"))
+
+
+# 2. PCA
+cyt <- buildTree(cyt, dim.type = "pca", dim.use = 1:4)
+# Tree plot
+plotTree(cyt, color.by = "CD3", show.node.name = F, cex.size = 1) + 
+  scale_colour_gradientn(colors = c("#00599F", "#EEEEEE", "#FF3222"))
+
+# 3. tSNE
+cyt <- buildTree(cyt, dim.type = "tsne", dim.use = 1:2)
+# Tree plot
+plotTree(cyt, color.by = "CD3", show.node.name = F, cex.size = 1) + 
+  scale_colour_gradientn(colors = c("#00599F", "#EEEEEE", "#FF3222"))
+
+# 4. Diffusion maps
+cyt <- buildTree(cyt, dim.type = "dc", dim.use = 1:5)
+# Tree plot
+plotTree(cyt, color.by = "CD3", show.node.name = F, cex.size = 1) + 
+  scale_colour_gradientn(colors = c("#00599F", "#EEEEEE", "#FF3222"))
+
+# 5. UMAP
+cyt <- buildTree(cyt, dim.type = "umap", dim.use = 1:2)
+# Tree plot
+plotTree(cyt, color.by = "CD3", show.node.name = F, cex.size = 1) + 
+  scale_colour_gradientn(colors = c("#00599F", "#EEEEEE", "#FF3222"))
+
+# By combining with biological significance, we choose tsne to build 
+# the trajectory
+cyt <- buildTree(cyt, dim.type = "tsne", dim.use = 1:2)
+cyt@meta.data$branch.id <- paste0("B", cyt@meta.data$branch.id)
+
+plotTree(cyt, color.by = "branch.id", show.node.name = T, cex.size = 1)
+
+plotTree(cyt, color.by = "branch.id", show.node.name = T, cex.size = 1)
+
+############# Modify branch id
+cyt@meta.data$branch.id[cyt@meta.data$branch.id %in% c("B5", "B2", "B10")] = "CD4 T cells"
+cyt@meta.data$branch.id[cyt@meta.data$branch.id %in% c("B7", "B13")] = "CD8 T cells"
+cyt@meta.data$branch.id[cyt@meta.data$branch.id %in% c("B1","B6","B12")] = "Megakaryocytic"
+cyt@meta.data$branch.id[cyt@meta.data$branch.id %in% c("B3")] = "DCs"
+cyt@meta.data$branch.id[cyt@meta.data$branch.id %in% c("B11")] = "B cells"
+cyt@meta.data$branch.id[cyt@meta.data$branch.id %in% c("B4","B8","B9","B14")] = "Myeloid"
+
+# In the biological analysis, we may found some clusters are
+# in the wrong branch, or division of the branch is insufficient.
+# We recommend modify the branch based on the marker expression
+cyt@meta.data$branch.id[cyt@meta.data$cluster.id %in% c(74,36,89,11)] = "HSCs"
+cyt@meta.data$branch.id[cyt@meta.data$cluster.id %in% c(62,14)] = "CD8 T cells"
+cyt@meta.data$branch.id[cyt@meta.data$cluster.id %in% c(72)] = "B cells"
+
+# Plot tree
+plotTree(cyt, color.by = "branch.id", show.node.name = T, cex.size = 1) 
+
+plot2D(cyt, item.use = c("tSNE_1", "tSNE_2"), color.by = "branch.id", 
+       alpha = 1, main = "tSNE", category = "categorical", show.cluser.id = F)
+
+# Run differential expressed markers of different branch
+diff.info <- runDiff(cyt)
+head(diff.info)
+
+# plot heatmap of clusters and branches
+plotClusterHeatmap(cyt)
+
+plotClusterHeatmap(cyt, color = colorRampPalette(c("purple","white","yellow"))(100))
+
+plotBranchHeatmap(cyt, colorRampPalette(c("#00599F", "#FFFFFF", "#FF3222"))(100), clustering_method = "complete")
+
+
+```
+
+## Analysis
+
+This module is designed for feature extraction and cell state refinement. When the tree is built, all branches are extracted to analyze the community structure of the trajectory topologies. The differentially expressed markers in each branch will be calculated in this module, which can be used to further define the subbranches. For the special analysis of FCS data, such as tracing the cell-of-origin during cell differentiation and reprogramming, the pseudotime can be estimated in the next step to reconstruct the processes of cell state changes based on dynamically expressed markers. The CytoTree provided an algorithm to estimate pseudotime and inference intermediate state cells based on prior knowledge. After trajectory analysis, the adjacency matrix was calculated using the KNN algorithm, which could be built based on either the expression matrix or the dimensionality reduction coordinates. Cells in the origin state were identified as the root cells. All shortest paths from the root cells to all other cells were calculated, and the mean value of the distances was computed as the pseudotime. The pseudotime of all clusters was then calculated in the CytoTree analysis module. Additionally, the analysis module provides functions to identify intermediate state cells, which may play an important role in the differentiation/reprogramming process.
+
+### Pseudotime
+
+``` {r eval = TRUE, fig.width = 8, fig.height = 7.5}
+
+###########################################
+#   Pseudotime 
+###########################################
+
+# Set HSPCs as root cells
+cyt <- defRootCells(cyt, root.cells = c(36,89,11))
+cyt <- runPseudotime(cyt, verbose = T, dim.type = "raw")
+
+# Plot 2D tSNE. 
+cyt@meta.data$stage <- cyt@meta.data$branch.id
+
+plot2D(cyt, item.use = c("tSNE_1", "tSNE_2"), category = "numeric",
+       size = 1, color.by = "pseudotime") + 
+  scale_colour_gradientn(colors = c("#F4D31D", "#FF3222","#7A06A0"))
+
+plotTree(cyt, color.by = "pseudotime", cex.size = 1) + 
+  scale_colour_gradientn(colors = c("#F4D31D","#FF3222","#7A06A0"))
+
+plotPseudotimeDensity(cyt, adjust = 2)
+
+plotPseudotimeTraj(cyt, var.cols = T) + 
+  scale_colour_gradientn(colors = c("#F4D31D", "#FF3222","#7A06A0"))
+
+
+```
+
+### Intermediate States Analysis
+
+``` {r eval = TRUE, fig.width = 10, fig.height = 7.5}
+
+###########################################
+#   Intermediate States Analysis
+###########################################
+
+###### Intermediate state cells for CD8 T cells
+cyt <- defLeafCells(cyt, leaf.cells = c(99,97))
+cyt <- runWalk(cyt, verbose = TRUE)
+cyt@meta.data$traj.value.log.CD8T <- cyt@meta.data$traj.value.log
+
+### fetch plot information
+plot.meta <- fetchPlotMeta(cyt, markers = colnames(cyt.data))
+
+# heatmap for CD8 T cells
+library(pheatmap)
+
+plot.meta.sub <- plot.meta[which(plot.meta$traj.value.log.CD8T > 0), ]
+plot.meta.sub <- plot.meta.sub[1:1000, ]
+plot.meta.sub <- plot.meta.sub[order(plot.meta.sub$pseudotime), ]
+pheatmap(t(plot.meta.sub[, colnames(cyt.data)]), scale  = "row",
+         cluster_rows = T, cluster_cols = F, cluster_method = "ward.D",
+         color = colorRampPalette(c("blue","blue","blue","white","red","red","red"))(100),
+         fontsize_col = 0.01)
+
+```
+
+
+## Bug Reports
+
+If there is any error in installing or librarying the CytoTree package, please contact us via e-mail forlynna@sjtu.edu.cn
+
+
+## Link to the quick start tutorial
+
+The quick start tutorial provides a quick-reading version of CytoTree workflow. See the quick start tutorial of CytoTree, please visit [Quick start of CytoTree](https://ytdai.github.io/CytoTree/Quick_start.html).
+
+## Link to the time-course tutorial
+
+The time-course tutorial provides a more detailed version of how to deal with time-course FCS data using CytoTree. See time-course data analysis of CytoTree, please visit [Time-course workflow of CytoTree](https://ytdai.github.io/CytoTree/Time_course.html).
+
+
+## Session Information
+
+``` {r eval = TRUE, fig.width = 6, fig.height = 6.5}
+
+# Show session information
+sessionInfo()
+
+```
+
+## Reference
+
+[1] Liu Q, Herring CA, Sheng Q, Ping J, Simmons AJ, Chen B, et al. Quantitative assessment of cell population diversity in single-cell landscapes. PLoS Biol. 2018;16:e2006687.
+
+[2]	Olsen LR, Leipold MD, Pedersen CB, Maecker HT. The anatomy of single cell mass cytometry data. Cytometry A. 2019;95:156-72.
+
+[3]	Van Gassen S, Callebaut B, Van Helden MJ, Lambrecht BN, Demeester P, Dhaene T, et al. FlowSOM: Using self-organizing maps for visualization and interpretation of cytometry data. Cytometry Part A. 2015;87:636-45.
+
+[4]	Aghaeepour N, Nikolic R, Hoos HH, Brinkman RR. Rapid cell population identification in flow cytometry data. Cytometry A. 2011;79:6-13.
+
+[5]	Chen H, Lau MC, Wong MT, Newell EW, Poidinger M, Chen J. Cytofkit: A Bioconductor Package for an Integrated Mass Cytometry Data Analysis Pipeline. PLoS Comput Biol. 2016;12:e1005112.
+
+[6]	Liu X, Song W, Wong BY, Zhang T, Yu S, Lin GN, et al. A comparison framework and guideline of clustering methods for mass cytometry data. Genome Biol. 2019;20:297.
+
+
