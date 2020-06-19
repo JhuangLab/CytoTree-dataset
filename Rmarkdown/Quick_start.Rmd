@@ -150,7 +150,7 @@ cyt <- runWalk(cyt, verbose = TRUE)
 
 # Save object
 if (FALSE) {
-  save(cyt, file = "Path to you output directory")
+  saveRDS(cyt, file = "Path to you output directory")
 }
 
 ######################## Visualization
@@ -272,6 +272,10 @@ We apologized for the inconvenience.
 ``` {r eval = TRUE, fig.width = 9, fig.height = 8}
 sessionInfo()
 ```
+
+## Version
+
+0.99.6
 
 ## References
 

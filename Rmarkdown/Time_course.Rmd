@@ -304,7 +304,6 @@ plot3D(sub.cyt, item.use = c("DC_2","DC_1","DC_3"),
 
 ```
 
-
 ## Bug Reports
 
 If there is any error in installing or librarying the CytoTree package, please contact us via e-mail forlynna@sjtu.edu.cn
@@ -324,6 +323,10 @@ The basic tutorial provides a more detailed version of CytoTree workflow. See th
 ``` {r eval = TRUE, fig.width = 9, fig.height = 8}
 sessionInfo()
 ```
+
+## Version
+
+0.99.6
 
 ## Reference 
 

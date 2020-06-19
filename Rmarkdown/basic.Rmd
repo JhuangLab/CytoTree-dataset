@@ -29,11 +29,7 @@ knitr::opts_chunk$set(echo = TRUE, cache = FALSE, eval = TRUE,
 
 ## Introduction
 
-Multidimensional flow and mass cytometric assays are widely used for cellular subpopulation identification, tissue microenvironment composition determination, clinical immunophenotyping and differential lineage reconstruction[1]. Modern fluorescence-based flow cytometers typically can detect up to 20 features at the single-cell level in one routine experiment, whereas mass cytometers increase the capacity to nearly 50 features[2]. Because of the traditional manual gating strategies used for flow cytometry data, effective analysis methods for multidimensional cytometric data still face challenges in terms of trajectory inference, pseudotime estimation, visualization and workflow standardization.
-
-Here we present CytoTree, a trajectory inference, pseudotime estimation and visualization toolkit for flow and mass cytometry data. The CytoTree package is built in R and offers a complete up-to-date analysis workflow for flow and mass cytometry data that includes subpopulation classification, dimensionality reduction, trajectory construction, differentially expressed marker calculation, pseudotime estimation, intermediate state identification and visualization. The CytoTree runs on several platforms, such as UNIX, Windows and MacOS, and provides an up-to-date, feature-rich and readily scalable workflow. 
-
-The CytoTree package was developed to provide a complete standardized analysis and visualization workflow for FCS data. In CytoTree workflow, an R S4 object is built to integrated all computational modules into one single channel, which is named as an CYT object. This design not only packages most statistical and computational approaches into a single comprehensive analysis workflow but also provides a convenient way for users to adjust parameters and obtain results. The computational modules of CytoTree can be mainly divided into four main categories: preprocessing, trajectory, analysis and visualization.
+Multidimensional flow and mass cytometric assays are widely used for cellular subpopulation identification, tissue microenvironment composition determination, clinical immunophenotyping and differential lineage reconstruction[1-6]. Here we present CytoTree, a trajectory inference, pseudotime estimation and visualization toolkit for flow and mass cytometry data. The CytoTree package is built in R and offers a complete up-to-date analysis workflow for flow and mass cytometry data that includes subpopulation classification, dimensionality reduction, trajectory construction, differentially expressed marker calculation, pseudotime estimation, intermediate state identification and visualization. The CytoTree runs on several platforms, such as UNIX, Windows and MacOS, and provides an up-to-date, feature-rich and readily scalable workflow. 
 
 ## Installation
 
@@ -358,7 +354,7 @@ cyt <- createCYT(raw.data = cyt.data.gating,
 
 ## Trajectory
 
-The aim of the trajectory module is to construct trajectory that reveals subpopulation connections and cellular dynamic processes using the clean matrix input. First, all cells included in the CYT object are unsupervised classified into different clusters based on the expression levels of the markers. The CytoTree provides multiple methods to cluster cells by choosing different parameters, such as self-organizing maps (SOM)[3], k-means clustering (kmeans)[4], clara, phenoGraph[5] and hierarchical clustering (hclust). The default clustering method is SOM, for better performance in precision, coherence, and stability than other unsupervised tools[6]. After clustering, if the total cell size is too large, cluster-dependent downsampling is recommended to reduce the total cell number and avoid small cluster deletion. Dimensionality reduction for both cells and clusters is also implemented in the clustering procedure. Four popular dimensionality reduction method are integrated in CytoTree, namely PCA, tSNE, diffusion maps and UMAP. In the CytoTree workflow, we use a tree-shaped method to identify trajectory topologies, and a minimum spanning tree (MST) will be generated to construct the trajectory for all clusters.
+The aim of the trajectory module is to construct trajectory that reveals subpopulation connections and cellular dynamic processes using the clean matrix input. In the CytoTree workflow, we use a tree-shaped method to identify trajectory topologies, and a minimum spanning tree (MST) will be generated to construct the trajectory for all clusters.
 
 ### Clustering
 
@@ -627,7 +623,7 @@ plotBranchHeatmap(cyt, colorRampPalette(c("#00599F", "#FFFFFF", "#FF3222"))(100)
 
 ## Analysis
 
-This module is designed for feature extraction and cell state refinement. When the tree is built, all branches are extracted to analyze the community structure of the trajectory topologies. The differentially expressed markers in each branch will be calculated in this module, which can be used to further define the subbranches. For the special analysis of FCS data, such as tracing the cell-of-origin during cell differentiation and reprogramming, the pseudotime can be estimated in the next step to reconstruct the processes of cell state changes based on dynamically expressed markers. The CytoTree provided an algorithm to estimate pseudotime and inference intermediate state cells based on prior knowledge. After trajectory analysis, the adjacency matrix was calculated using the KNN algorithm, which could be built based on either the expression matrix or the dimensionality reduction coordinates. Cells in the origin state were identified as the root cells. All shortest paths from the root cells to all other cells were calculated, and the mean value of the distances was computed as the pseudotime. The pseudotime of all clusters was then calculated in the CytoTree analysis module. Additionally, the analysis module provides functions to identify intermediate state cells, which may play an important role in the differentiation/reprogramming process.
+This module is designed for feature extraction and cell state refinement, including pseudotime estimation and intermediate state cell analysis.
 
 ### Pseudotime
 
@@ -711,6 +707,10 @@ The time-course tutorial provides a more detailed version of how to deal with ti
 sessionInfo()
 
 ```
+
+## Version
+
+0.99.6
 
 ## Reference
 
