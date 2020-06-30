@@ -107,9 +107,9 @@ cyt <- runTSNE(cyt)
 cyt <- runDiffusionMap(cyt)
 cyt <- runUMAP(cyt)
 cyt <- buildTree(cyt, dim.type = "umap", dim.use = 1:2)
-cyt <- defRootCells(cyt, root.cells = "Root cells")
+cyt <- defRootCells(cyt, root.cells = "Please define your root cells")
 cyt <- runPseudotime(cyt)
-cyt <- defLeafCells(cyt, leaf.cells = "Leaf cells")
+cyt <- defLeafCells(cyt, leaf.cells = "Please define your leaf cells")
 cyt <- runWalk(cyt)
 
 
@@ -121,9 +121,6 @@ cyt <- runWalk(cyt)
 This is preprocessing step for flow cytometry data analysis. In CytoTree workflow, data import, compensation, quality control, filtration, normalization and merge cells from different samples can be implemented in the preprocessing module. In this tutorial, we provided two methods to perform compensation and filtration by using `flowCore` and `CytoTree`.
 
 We compared the visualization step and gating control between `flowJO` and `CytoTree` using the rectangular gate. And there were no differences.
-
-<img src="Fig/Compare.png" height=1000 width=1000/>
-
 
 ### Preprocessing using flowCore
 
