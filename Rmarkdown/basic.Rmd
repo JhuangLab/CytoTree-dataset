@@ -31,6 +31,10 @@ knitr::opts_chunk$set(echo = TRUE, cache = FALSE, eval = TRUE,
 
 Multidimensional flow and mass cytometric assays are widely used for cellular subpopulation identification, tissue microenvironment composition determination, clinical immunophenotyping and differential lineage reconstruction[1-6]. Here we present CytoTree, a trajectory inference, pseudotime estimation and visualization toolkit for flow and mass cytometry data. The CytoTree package is built in R and offers a complete up-to-date analysis workflow for flow and mass cytometry data that includes subpopulation classification, dimensionality reduction, trajectory construction, differentially expressed marker calculation, pseudotime estimation, intermediate state identification and visualization. The CytoTree runs on several platforms, such as UNIX, Windows and MacOS, and provides an up-to-date, feature-rich and readily scalable workflow. 
 
+To demonstrate and validate the application and performance of CytoTree, we firstly generated a time-course flow cytometry data, which was obtained from the induction of the hematopoietic differentiation from human embryonic stem cell (hESC) line HUES9 by monitoring ten cell surface markers at six-time points **(DATA_1)**. Secondly, a public thirteen-marker panel single-cell mass cytometry dataset was applied which was obtained from healthy human bone marrow cells (https://flowrepository.org/id/FR-FCM-ZY9R) **(DATA_2)**.
+
+Examples used in the preprocessing part is the time-course flow cytometry data **(DATA_1)**, and the examples used in the trajectory and analysis part is the thirteen-marker panel single-cell mass cytometry dataset **(DATA_2)**.
+
 ## Installation
 
 Installation via GitHub
@@ -66,6 +70,7 @@ library(stringr)
 ##### Preprocessing
 #######################################################
 # Read fcs files
+# This example was included in the CytoTree package
 fcs.path <- system.file("extdata", package = "CytoTree")
 fcs.files <- list.files(fcs.path, pattern = '.FCS$', full = TRUE)
 
@@ -352,6 +357,8 @@ cyt <- createCYT(raw.data = cyt.data.gating,
 ## Trajectory
 
 The aim of the trajectory module is to construct trajectory that reveals subpopulation connections and cellular dynamic processes using the clean matrix input. In the CytoTree workflow, we use a tree-shaped method to identify trajectory topologies, and a minimum spanning tree (MST) will be generated to construct the trajectory for all clusters.
+
+We used a public thirteen-marker panel single-cell mass cytometry dataset to demonstrate the further tutorial. This data was obtained from healthy human bone marrow cells.
 
 ### Clustering
 
