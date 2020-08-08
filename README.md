@@ -1,5 +1,5 @@
 
-# CytoTree-dataset <img src="https://github.com/JhuangLab/flowSpy/blob/master/inst/figures/logo.png" align="right" height=150 width=150/>
+# CytoTree-dataset <img src="https://github.com/JhuangLab/CytoTree/blob/master/inst/figures/logo.png" align="right" height=150 width=150/>
 
 ## 1 Introduction
 
@@ -20,11 +20,8 @@ git clone https://github.com/JhuangLab/CytoTree-dataset.git
 
 ## 3 Examples
 
-See the quick start tutorial of CytoTree, please visit [Quick start of CytoTree](https://jhuanglab.github.io/CytoTree/Quick_start.html).
+See the quick start tutorial of CytoTree, please visit [Quick start of CytoTree](https://www.bioconductor.org/packages/devel/bioc/vignettes/CytoTree/inst/doc/Tutorial.html#overview-of-cytotree-workflow).
 
-See the basic tutorial of CytoTree, please visit [Tutorial of CytoTree](https://jhuanglab.github.io/CytoTree/basic.html).
-
-See time-course data analysis of CytoTree, please visit [Time-course workflow of CytoTree](https://jhuanglab.github.io/CytoTree/Time_course.html).
 
 ## 4 Bug Reports
 
